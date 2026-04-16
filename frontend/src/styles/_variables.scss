@@ -1,0 +1,41 @@
+// Variáveis SCSS globais da Plataforma Fuvest
+
+// Cores principais
+$primary: #1a237e;
+$primary-light: #534bae;
+$primary-dark: #000051;
+$accent: #ff6f00;
+$accent-light: #ffa040;
+$accent-dark: #c43e00;
+
+// Cores de feedback
+$success: #2e7d32;
+$warning: #f9a825;
+$error: #c62828;
+$info: #0277bd;
+
+// Neutros
+$background: #fafafa;
+$surface: #ffffff;
+$text-primary: #212121;
+$text-secondary: #757575;
+$divider: #bdbdbd;
+
+// Tipografia
+$font-family: 'Inter', 'Roboto', sans-serif;
+$font-size-base: 16px;
+
+// Breakpoints
+$breakpoint-sm: 576px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 992px;
+$breakpoint-xl: 1200px;
+
+// Border radius
+$border-radius: 8px;
+$border-radius-lg: 16px;
+
+// Sombras
+$shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+$shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.15);

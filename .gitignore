@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+dist/
+.angular/
+
+# IDEs
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.production
+.env.local
+
+# Database
+docker-data/
+*.sql
+
+# Build artifacts
+*.log
+npm-debug.log*
+package-lock.json (se quiser forçar npm install limpo em cada ambiente, mas geralmente é bom manter)
+
+# PDF y JSON (Grandes files de dados - as questões já estão no banco)
+ProvasFuvest/
+ProvasFuvestJson/
+cursos_fuvest.json
+
+# System files
+.DS_Store
+Thumbs.db
