@@ -8,17 +8,25 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   app.enableCors({
-    origin: [
-      process.env.FRONTEND_URL,
-      'http://localhost:4200',
-      'https://hiperprojeto-fuvest.vercel.app',
-    ].filter(Boolean),
+    origin: (origin: string, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin || 
+          origin.includes('vercel.app') || 
+          origin.includes('localhost') ||
+          origin === process.env.FRONTEND_URL) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  await app.listen(process.env.PORT || 3000);
-  console.log(`Backend rodando em: http://localhost:${process.env.PORT || 3000}`);
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+  console.log(`🚀 Backend inicializado com sucesso na porta: ${port}`);
+  console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Frontend URL autorizada (env): ${process.env.FRONTEND_URL}`);
 }
 bootstrap();
