@@ -21,11 +21,5 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 
-# Variáveis de ambiente padrão
-ENV NODE_ENV=production
-ENV PORT=3000
-
-EXPOSE 3000
-
 # Rodar a aplicação
 CMD ["node", "dist/main"]
