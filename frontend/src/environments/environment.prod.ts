@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiUrl: 'https://sua-api.railway.app' // Altere para a URL real do seu backend
+  apiUrl: 'https://hiperprojeto-fuvest.railway.internal' // Note: This internal URL may not work on the client side.
 };
