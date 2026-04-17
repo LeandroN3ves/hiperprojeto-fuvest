@@ -13,6 +13,7 @@ import { Resposta } from './database/entities/resposta.entity';
 import { Estatistica } from './database/entities/estatistica.entity';
 import { LeaderboardSemanal } from './database/entities/leaderboard-semanal.entity';
 import { AppController } from './app.controller';
+import { HealthController } from './health.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { QuestoesModule } from './questoes/questoes.module';
@@ -40,11 +41,15 @@ import { ScheduleModule } from '@nestjs/schedule';
         entities: [Curso, CursoTema, Usuario, Questao, Prova, Resposta, Estatistica, LeaderboardSemanal],
         synchronize: process.env.NODE_ENV !== 'production',
         logging: process.env.NODE_ENV === 'development',
-        ssl: process.env.NODE_ENV === 'production',
+        retryAttempts: 3,
+        ssl: process.env.NODE_ENV === 'production' ? {
+          rejectUnauthorized: false,
+        } : false,
         extra: process.env.NODE_ENV === 'production' ? {
           ssl: {
             rejectUnauthorized: false,
           },
+          connectTimeout: 10000,
         } : {},
       }),
     }),
@@ -56,7 +61,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     LeaderboardModule,
     IaModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [AppService],
 })
 export class AppModule {}
