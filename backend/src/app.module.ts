@@ -50,6 +50,7 @@ import { ScheduleModule } from '@nestjs/schedule';
             rejectUnauthorized: false,
           },
           connectTimeout: 10000,
+          prepareThreshold: 0, // Essencial para Supabase Pooler (Porta 6543)
         } : {},
       }),
     }),
