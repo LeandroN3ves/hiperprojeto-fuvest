@@ -274,7 +274,7 @@ HiperprojetoFuvest/
 | 09 | Frontend Base + Auth | ✅ Completo | Login, registro, navbar, routing, design |
 | 10 | Frontend Provas | ✅ Completo | Configurar, executar, resultado |
 | 11 | Frontend Stats/Leaderboard/Chat | ✅ Completo | Estatísticas, ranking, chat IA |
-| 12 | Provas Semanais + Deploy | ❌ Pendente | Cron job + Dockerfile + vercel.json |
+| 12 | Provas Semanais + Deploy | ✅ Completo | Cron job + Dockerfile + vercel.json (Finalizado, aguardando execução manual do Deploy) |
 
 ### Design Extras (fora dos STEPs)
 - ✅ **Design Tech Light** — Outfit font, gradientes suaves, glassmorphism
@@ -293,23 +293,17 @@ Em 15/04/2026, foram importadas **1.234 questões** de 15 provas da Fuvest (1ª 
 
 Em 16/04/2026, foram importados **87 cursos** com **719 temas** associados via `npm run import:cursos`. O script leu a base `cursos_fuvest.json` e as injetou nas tabelas `cursos` e `cursos_temas`.
 
+### ✅ CONCLUÍDO: STEP 12 — Provas Semanais + Infraestrutura de Deploy
+Nos dias recentes, o cron job (`ProvasSemanaisService` rodando às segundas 00:00) e todo o código de infra (Dockerfile, `vercel.json` e `environment.prod.ts`) foram implementados. O arquivo explicativo `DEPLOY.md` foi criado.
+
 ### Próximos Passos:
-1. **STEP 12 — Provas Semanais + Deploy**
-   - Criar `ProvasSemanaisService` com cron job `@Cron('0 0 * * 1')`
-   - Adicionar endpoint `GET /provas/semanal/atual`
-   - Registrar `ScheduleModule.forRoot()` no `ProvasModule`
-   - Criar `backend/Dockerfile`
-   - Criar `frontend/vercel.json`
-   - Criar `frontend/src/environments/environment.prod.ts`
+1. **Deploy Manual (Siga as dicas do DEPLOY.md)**
+   - Faça push do código para o GitHub.
+   - Faça o deploy no Railway (Backend) e na Vercel (Frontend).
+   - Insira os inserts no Supabase (`seed_1.sql`, `seed_2.sql` e `seed_3.sql`)
 
-2. **Deploy**
-   - Backend: Railway ou Render
-   - Frontend: Vercel
-   - Banco: Supabase (PostgreSQL)
-   - IA: Definir hospedagem (Ollama não roda em serverless)
-
-3. **Opcional: importar provas faltantes**
-   - 2018 e 2021 (JSONs ainda não processados)
+2. **Opcional: Importar provas faltantes (Anos pendentes)**
+   - 2018 e 2021 (Os PDFs da fase 1 estão presentes em `ProvasFuvest/` mas não em `.json` no `ProvasFuvestJson/`)
    - Provas de 2ª fase (dissertativas → converter para múltipla escolha)
 
 ---
