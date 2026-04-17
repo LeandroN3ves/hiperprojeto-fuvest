@@ -38,8 +38,14 @@ import { ScheduleModule } from '@nestjs/schedule';
         password: config.get('database.password'),
         database: config.get('database.database'),
         entities: [Curso, CursoTema, Usuario, Questao, Prova, Resposta, Estatistica, LeaderboardSemanal],
-        synchronize: process.env.NODE_ENV !== 'production', // NUNCA true em produção
+        synchronize: process.env.NODE_ENV !== 'production',
         logging: process.env.NODE_ENV === 'development',
+        ssl: process.env.NODE_ENV === 'production',
+        extra: process.env.NODE_ENV === 'production' ? {
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        } : {},
       }),
     }),
     AuthModule,
