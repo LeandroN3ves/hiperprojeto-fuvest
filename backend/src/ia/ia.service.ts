@@ -35,7 +35,7 @@ export class IaService {
       const resposta = await this.chamarGemini(contexto, mensagem, historico);
       return { resposta, fonte: 'gemini' };
     } catch (e) {
-      this.logger.warn('Gemini não configurado ou erro, tentando Ollama...');
+      this.logger.warn(`Gemini falhou: ${e?.message || e}. Tentando Ollama...`);
     }
 
     // 2. Tentar Ollama (Local)
@@ -43,7 +43,7 @@ export class IaService {
       const resposta = await this.chamarOllama(contexto, mensagem, historico);
       return { resposta, fonte: 'ollama' };
     } catch (e) {
-      this.logger.warn('Ollama indisponível, tentando alternativa...');
+      this.logger.warn(`Ollama indisponível: ${e?.message || e}. Tentando HuggingFace...`);
     }
 
     // 3. Tentar HuggingFace
@@ -51,7 +51,7 @@ export class IaService {
       const resposta = await this.chamarHuggingFace(contexto, mensagem, historico);
       return { resposta, fonte: 'huggingface' };
     } catch (e) {
-      this.logger.warn('HuggingFace indisponível, usando fallback por regras...');
+      this.logger.warn(`HuggingFace indisponível: ${e?.message || e}. Usando fallback por regras...`);
     }
 
     // 4. Fallback garantido
@@ -222,7 +222,7 @@ Foque nas dificuldades do aluno e dê conselhos práticos para a Fuvest.
     if (!apiKey) throw new Error('Gemini API key não configurada');
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const chat = model.startChat({
         history: [
