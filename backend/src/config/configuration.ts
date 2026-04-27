@@ -20,6 +20,9 @@ export default () => ({
     baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
     model: process.env.OLLAMA_MODEL || 'llama3',
   },
+  openrouter: {
+    apiKey: process.env.OPENROUTER_API_KEY,
+  },
   gemini: {
     apiKey: process.env.GEMINI_API_KEY,
   },

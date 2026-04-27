@@ -15,7 +15,7 @@ interface MensagemChat {
 @Injectable()
 export class IaService {
   private readonly logger = new Logger(IaService.name);
-  private readonly TIMEOUT_MS = 300000; // Aumentado para 300s (5min) para Ollama local
+  private readonly TIMEOUT_MS = 30000; // 30s para APIs cloud
 
   constructor(
     private configService: ConfigService,
@@ -30,7 +30,15 @@ export class IaService {
   async chat(usuarioId: string, mensagem: string, historico: MensagemChat[] = []) {
     const { contexto, temasFracos, mediaAcertos } = await this.montarContextoUsuario(usuarioId);
 
-    // 1. Tentar Gemini (Recomendado para Produção)
+    // 1. Tentar OpenRouter (modelos gratuitos)
+    try {
+      const resposta = await this.chamarOpenRouter(contexto, mensagem, historico);
+      return { resposta, fonte: 'openrouter' };
+    } catch (e) {
+      this.logger.warn(`OpenRouter falhou: ${e?.message || e}. Tentando Gemini direto...`);
+    }
+
+    // 2. Tentar Gemini direto (backup)
     try {
       const resposta = await this.chamarGemini(contexto, mensagem, historico);
       return { resposta, fonte: 'gemini' };
@@ -38,20 +46,12 @@ export class IaService {
       this.logger.warn(`Gemini falhou: ${e?.message || e}. Tentando Ollama...`);
     }
 
-    // 2. Tentar Ollama (Local)
+    // 3. Tentar Ollama (Local — só funciona em dev)
     try {
       const resposta = await this.chamarOllama(contexto, mensagem, historico);
       return { resposta, fonte: 'ollama' };
     } catch (e) {
-      this.logger.warn(`Ollama indisponível: ${e?.message || e}. Tentando HuggingFace...`);
-    }
-
-    // 3. Tentar HuggingFace
-    try {
-      const resposta = await this.chamarHuggingFace(contexto, mensagem, historico);
-      return { resposta, fonte: 'huggingface' };
-    } catch (e) {
-      this.logger.warn(`HuggingFace indisponível: ${e?.message || e}. Usando fallback por regras...`);
+      this.logger.warn(`Ollama indisponível: ${e?.message || e}. Usando fallback por regras...`);
     }
 
     // 4. Fallback garantido
@@ -111,17 +111,14 @@ export class IaService {
    * Método genérico para solicitar JSON estruturado da IA.
    */
   async gerarJsonEstruturado(prompt: string, textoBase: string): Promise<any> {
+    const systemPrompt = 'Você é um assistente que extrai dados e responde estritamente em JSON válido.';
+    const mensagemCompleta = `${prompt}\n\nTexto para processar:\n${textoBase}`;
+
     try {
-      // Tentar Gemini primeiro para extração em produção
-      const resposta = await this.chamarGemini(
-        'Você é um assistente que extrai dados e responde estritamente em JSON válido.',
-        `${prompt}\n\nTexto para processar:\n${textoBase}`,
-        []
-      ).catch(() => this.chamarOllama(
-        'Você é um assistente que extrai dados e responde estritamente em JSON válido.',
-        `${prompt}\n\nTexto para processar:\n${textoBase}`,
-        []
-      ));
+      // Tentar OpenRouter primeiro, depois Gemini, depois Ollama
+      const resposta = await this.chamarOpenRouter(systemPrompt, mensagemCompleta, [])
+        .catch(() => this.chamarGemini(systemPrompt, mensagemCompleta, []))
+        .catch(() => this.chamarOllama(systemPrompt, mensagemCompleta, []));
 
       // Limpar possíveis marcas de markdown (```json ... ```)
       const jsonLimpo = resposta.replace(/```json|```/g, '').trim();
@@ -133,7 +130,149 @@ export class IaService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // HELPERS PRIVADOS
+  // PROVIDERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * OpenRouter — Provider principal (modelos gratuitos)
+   * Tenta múltiplos modelos grátis em sequência.
+   */
+  private async chamarOpenRouter(
+    systemPrompt: string, mensagem: string, historico: MensagemChat[]
+  ): Promise<string> {
+    const apiKey = this.configService.get<string>('openrouter.apiKey');
+    if (!apiKey) throw new Error('OpenRouter API key não configurada');
+
+    // Modelos gratuitos em ordem de preferência
+    const modelos = [
+      'google/gemini-2.0-flash-exp:free',
+      'deepseek/deepseek-chat-v3-0324:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
+    ];
+
+    for (const modelo of modelos) {
+      try {
+        const response = await axios.post(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            model: modelo,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...historico.map(h => ({
+                role: h.role === 'assistant' ? 'assistant' : 'user',
+                content: h.content,
+              })),
+              { role: 'user', content: mensagem },
+            ],
+            max_tokens: 1000,
+            temperature: 0.7,
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://hiperprojeto-fuvest.vercel.app',
+              'X-Title': 'HiperprojetoFuvest',
+            },
+            timeout: this.TIMEOUT_MS,
+          },
+        );
+
+        const content = response.data?.choices?.[0]?.message?.content;
+        if (content) {
+          this.logger.log(`OpenRouter respondeu via modelo: ${modelo}`);
+          return content;
+        }
+
+        this.logger.warn(`OpenRouter modelo ${modelo} retornou resposta vazia, tentando próximo...`);
+      } catch (e) {
+        const status = e?.response?.status;
+        const is429 = status === 429 || e?.message?.includes('429');
+        const is503 = status === 503;
+        
+        if ((is429 || is503) && modelo !== modelos[modelos.length - 1]) {
+          this.logger.warn(`OpenRouter modelo ${modelo} indisponível (${status || 'erro'}), tentando próximo...`);
+          continue;
+        }
+        throw e;
+      }
+    }
+
+    throw new Error('Todos os modelos OpenRouter falharam');
+  }
+
+  /**
+   * Gemini direto — Backup
+   */
+  private async chamarGemini(
+    systemPrompt: string, mensagem: string, historico: MensagemChat[]
+  ): Promise<string> {
+    const apiKey = this.configService.get<string>('gemini.apiKey');
+    if (!apiKey) throw new Error('Gemini API key não configurada');
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const modelos = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
+    for (const modeloNome of modelos) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modeloNome });
+
+        const chat = model.startChat({
+          history: [
+            { role: 'user', parts: [{ text: systemPrompt + "\n\nEntendido?" }] },
+            { role: 'model', parts: [{ text: "Sim, entendi. Estou pronto para atuar como seu tutor especializado na Fuvest." }] },
+            ...historico.map(h => ({
+              role: h.role === 'user' ? 'user' : 'model',
+              parts: [{ text: h.content }]
+            }))
+          ],
+        });
+
+        const result = await chat.sendMessage(mensagem);
+        const response = await result.response;
+        this.logger.log(`Gemini respondeu via modelo: ${modeloNome}`);
+        return response.text();
+      } catch (e) {
+        const is429 = e?.message?.includes('429') || e?.message?.includes('quota');
+        if (is429 && modeloNome !== modelos[modelos.length - 1]) {
+          this.logger.warn(`Modelo ${modeloNome} com quota esgotada, tentando próximo...`);
+          continue;
+        }
+        throw e;
+      }
+    }
+
+    throw new Error('Todos os modelos Gemini falharam');
+  }
+
+  /**
+   * Ollama — Apenas para desenvolvimento local
+   */
+  private async chamarOllama(
+    systemPrompt: string, mensagem: string, historico: MensagemChat[]
+  ): Promise<string> {
+    const baseUrl = this.configService.get<string>('ollama.baseUrl');
+    const model = this.configService.get<string>('ollama.model');
+
+    const response = await axios.post(
+      `${baseUrl}/api/chat`,
+      {
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...historico,
+          { role: 'user', content: mensagem },
+        ],
+        stream: false,
+      },
+      { timeout: 300000 }, // 5min para Ollama local (modelos pesados)
+    );
+
+    return response.data.message?.content ?? '';
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HELPERS
   // ─────────────────────────────────────────────────────────────────────────
 
   private async montarContextoUsuario(usuarioId: string) {
@@ -169,74 +308,5 @@ Foque nas dificuldades do aluno e dê conselhos práticos para a Fuvest.
 `.trim();
 
     return { contexto, temasFracos, mediaAcertos };
-  }
-
-  private async chamarOllama(
-    systemPrompt: string, mensagem: string, historico: MensagemChat[]
-  ): Promise<string> {
-    const baseUrl = this.configService.get<string>('ollama.baseUrl');
-    const model = this.configService.get<string>('ollama.model');
-
-    const response = await axios.post(
-      `${baseUrl}/api/chat`,
-      {
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...historico,
-          { role: 'user', content: mensagem },
-        ],
-        stream: false,
-      },
-      { timeout: this.TIMEOUT_MS },
-    );
-
-    return response.data.message?.content ?? '';
-  }
-
-  private async chamarHuggingFace(
-    systemPrompt: string, mensagem: string, historico: MensagemChat[]
-  ): Promise<string> {
-    const apiKey = this.configService.get<string>('huggingface.apiKey');
-    if (!apiKey) throw new Error('HuggingFace API key não configurada');
-
-    const prompt = `${systemPrompt}\n\nUsuário: ${mensagem}\nAssistente:`;
-
-    const response = await axios.post(
-      'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2',
-      { inputs: prompt, parameters: { max_new_tokens: 500, temperature: 0.7 } },
-      {
-        headers: { Authorization: `Bearer ${apiKey}` },
-        timeout: this.TIMEOUT_MS,
-      },
-    );
-
-    const texto = response.data[0]?.generated_text ?? '';
-    return texto.split('Assistente:').pop()?.trim() ?? '';
-  }
-
-  private async chamarGemini(
-    systemPrompt: string, mensagem: string, historico: MensagemChat[]
-  ): Promise<string> {
-    const apiKey = this.configService.get<string>('gemini.apiKey');
-    if (!apiKey) throw new Error('Gemini API key não configurada');
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-    const chat = model.startChat({
-        history: [
-            { role: 'user', parts: [{ text: systemPrompt + "\n\nEntendido?" }] },
-            { role: 'model', parts: [{ text: "Sim, entendi. Estou pronto para atuar como seu tutor especializado na Fuvest." }] },
-            ...historico.map(h => ({
-                role: h.role === 'user' ? 'user' : 'model',
-                parts: [{ text: h.content }]
-            }))
-        ],
-    });
-
-    const result = await chat.sendMessage(mensagem);
-    const response = await result.response;
-    return response.text();
   }
 }

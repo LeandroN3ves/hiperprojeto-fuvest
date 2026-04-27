@@ -296,15 +296,19 @@ Em 16/04/2026, foram importados **87 cursos** com **719 temas** associados via `
 ### ✅ CONCLUÍDO: STEP 12 — Provas Semanais + Infraestrutura de Deploy
 Nos dias recentes, o cron job (`ProvasSemanaisService` rodando às segundas 00:00) e todo o código de infra (Dockerfile, `vercel.json` e `environment.prod.ts`) foram implementados. O arquivo explicativo `DEPLOY.md` foi criado.
 
-### Próximos Passos:
-1. **Deploy Manual (Siga as dicas do DEPLOY.md)**
-   - Faça push do código para o GitHub.
-   - Faça o deploy no Railway (Backend) e na Vercel (Frontend).
-   - Insira os inserts no Supabase (`seed_1.sql`, `seed_2.sql` e `seed_3.sql`)
+### ✅ CONCLUÍDO: Correções Pós-Deploy e Polimento (Abril 2026)
 
-2. **Opcional: Importar provas faltantes (Anos pendentes)**
-   - 2018 e 2021 (Os PDFs da fase 1 estão presentes em `ProvasFuvest/` mas não em `.json` no `ProvasFuvestJson/`)
-   - Provas de 2ª fase (dissertativas → converter para múltipla escolha)
+- **Correção de Encoding no Banco (Supabase):** Os dados inseridos inicialmente no banco de dados de produção apresentavam problemas de *mojibake* (acentos corrompidos, ex: "Fásica" ao invés de "Física"). Criou-se o script `regenerate_seeds.py` para extrair os dados dos JSONs originais e gerar 3 arquivos de seed limpos e com decodificação correta (`seed_1_clean.sql`, `seed_2_clean.sql`, `seed_3_clean.sql`). Eles foram executados e a base de dados de produção agora exibe todos os caracteres em PT-BR perfeitos.
+- **Tratamento de Questões com Imagem:** Como a plataforma não suporta imagens em perguntas neste momento, um script identificou e apagou 145 questões da base de produção que dependiam da *tag* `[IMAGEM]`. Assim, restaram 1090 questões na plataforma que podem ser solucionadas sem contexto visual.
+- **Atualização da Inteligência Artificial:** O *tutor* embutido na aplicação estava retornando respostas padronizadas pois o modelo original do Google Gemini vinculado API (`gemini-1.5-flash`) foi descontinuado. O backend em `src/ia/ia.service.ts` foi refatorado para utilizar a versão nova (`gemini-2.0-flash`), incluindo também *logs* apropriados de detecção de erros. As correções foram enviadas ao GitHub acionando um rebuild bem sucedido no Railway.
+
+### Próximos Passos (Para a próxima sessão):
+
+1. **Testar IA em Produção:** Verificar e conversar com o chatbot no painel ao vivo para averiguar se está usando o Gemini. A API Key no Railway continuou a mesma, logo ele deve conectar automaticamente.
+2. **Futuro - Recuperar as 145 Questões (Opcional):** Implementar um suporte de storage (S3 ou Supabase Storage) para hospedar imagens que compõem essas questões e adicioná-las novamente na UI, bem como no parsing.
+3. **Futuro - Importar provas faltantes:**
+   - Adicionar arquivos JSON de edições faltando (2018 e 2021 — os respectivos PDFs já estão em `ProvasFuvest/`).
+   - Avaliar importar *também* as questões de 2ª fase e converte-las logicamente para múltipla escolha.
 
 ---
 
