@@ -31,11 +31,16 @@ export class IaService {
     const { contexto, temasFracos, mediaAcertos } = await this.montarContextoUsuario(usuarioId);
 
     // 1. Tentar OpenRouter (modelos gratuitos)
-    try {
-      const resposta = await this.chamarOpenRouter(contexto, mensagem, historico);
-      return { resposta, fonte: 'openrouter' };
-    } catch (e) {
-      this.logger.warn(`OpenRouter falhou: ${e?.message || e}. Tentando Gemini direto...`);
+    const openrouterKey = this.configService.get<string>('openrouter.apiKey');
+    if (openrouterKey) {
+      try {
+        const resposta = await this.chamarOpenRouter(contexto, mensagem, historico);
+        return { resposta, fonte: 'openrouter' };
+      } catch (e) {
+        this.logger.warn(`OpenRouter falhou: ${e?.message || e}. Tentando Gemini direto...`);
+      }
+    } else {
+      this.logger.warn('OpenRouter API key não está configurada. Pulando para Gemini...');
     }
 
     // 2. Tentar Gemini direto (backup)
@@ -211,7 +216,7 @@ export class IaService {
     if (!apiKey) throw new Error('Gemini API key não configurada');
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const modelos = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelos = ['gemini-2.0-flash-lite', 'gemini-2.0-flash'];
 
     for (const modeloNome of modelos) {
       try {

@@ -41,6 +41,8 @@ async function bootstrap() {
     console.log(`📡 Banco de Dados Host: ${process.env.SUPABASE_HOST ? 'SUPABASE_HOST detectado' : 'Usando DB_HOST'}`);
     console.log(`👤 Usuário Detectado: ${process.env.SUPABASE_USER ? process.env.SUPABASE_USER.substring(0, 12) + '...' : 'Nenhum SUPABASE_USER'}`);
     console.log(`🔗 URL da API: ${process.env.RAILWAY_STATIC_URL || 'localhost'}`);
+    console.log(`🤖 OpenRouter API Key: ${process.env.OPENROUTER_API_KEY ? 'CONFIGURADA (' + process.env.OPENROUTER_API_KEY.substring(0, 10) + '...)' : '❌ NÃO CONFIGURADA'}`);
+    console.log(`🤖 Gemini API Key: ${process.env.GEMINI_API_KEY ? 'CONFIGURADA' : '❌ NÃO CONFIGURADA'}`);
   } catch (error) {
     console.error('❌ ERRO CRÍTICO NA INICIALIZAÇÃO:', error);
     process.exit(1);
