@@ -140,7 +140,7 @@ export class IaService {
 
   /**
    * OpenRouter — Provider principal (modelos gratuitos)
-   * Tenta múltiplos modelos grátis em sequência.
+   * Usa o roteador automático gratuito do OpenRouter.
    */
   private async chamarOpenRouter(
     systemPrompt: string, mensagem: string, historico: MensagemChat[]
@@ -148,15 +148,17 @@ export class IaService {
     const apiKey = this.configService.get<string>('openrouter.apiKey');
     if (!apiKey) throw new Error('OpenRouter API key não configurada');
 
-    // Modelos gratuitos em ordem de preferência
+    // Modelos gratuitos disponíveis (Abril 2026)
+    // openrouter/auto seleciona automaticamente o melhor modelo grátis disponível
     const modelos = [
-      'google/gemini-2.0-flash-exp:free',
-      'deepseek/deepseek-chat-v3-0324:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
+      'nvidia/llama-3.3-nemotron-super-49b-v1:free',
+      'google/gemma-3-27b-it:free',
+      'openrouter/auto',
     ];
 
     for (const modelo of modelos) {
       try {
+        this.logger.log(`OpenRouter tentando modelo: ${modelo}...`);
         const response = await axios.post(
           'https://openrouter.ai/api/v1/chat/completions',
           {
@@ -179,7 +181,7 @@ export class IaService {
               'HTTP-Referer': 'https://hiperprojeto-fuvest.vercel.app',
               'X-Title': 'HiperprojetoFuvest',
             },
-            timeout: this.TIMEOUT_MS,
+            timeout: 60000, // 60s para modelos gratuitos (mais lentos)
           },
         );
 
@@ -189,17 +191,26 @@ export class IaService {
           return content;
         }
 
+        // Verificar se houve erro na resposta
+        const errorMsg = response.data?.error?.message;
+        if (errorMsg) {
+          this.logger.warn(`OpenRouter modelo ${modelo} erro: ${errorMsg}`);
+          continue;
+        }
+
         this.logger.warn(`OpenRouter modelo ${modelo} retornou resposta vazia, tentando próximo...`);
       } catch (e) {
         const status = e?.response?.status;
-        const is429 = status === 429 || e?.message?.includes('429');
-        const is503 = status === 503;
+        const errorData = e?.response?.data;
+        const errorMsg = errorData?.error?.message || e?.message || 'erro desconhecido';
         
-        if ((is429 || is503) && modelo !== modelos[modelos.length - 1]) {
-          this.logger.warn(`OpenRouter modelo ${modelo} indisponível (${status || 'erro'}), tentando próximo...`);
+        this.logger.warn(`OpenRouter modelo ${modelo} falhou (status: ${status || 'N/A'}): ${errorMsg}`);
+        
+        // Se não é o último modelo, tenta o próximo
+        if (modelo !== modelos[modelos.length - 1]) {
           continue;
         }
-        throw e;
+        throw new Error(`Todos os modelos OpenRouter falharam. Último erro: ${errorMsg}`);
       }
     }
 
