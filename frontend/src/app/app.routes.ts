@@ -52,6 +52,11 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/ia-chat/ia-chat.component').then((m) => m.IaChatComponent),
       },
+      {
+        path: 'gerador-ia',
+        loadComponent: () =>
+          import('./features/gerador-ia/gerador-ia.component').then((m) => m.GeradorIaComponent),
+      },
     ],
   },
   { path: '**', redirectTo: 'dashboard' },

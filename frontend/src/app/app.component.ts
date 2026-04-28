@@ -16,6 +16,7 @@ import { ThemeService } from './core/services/theme.service';
     <nav *ngIf="authService.logado()">
       <a routerLink="/dashboard">Dashboard</a>
       <a routerLink="/provas/configurar">Nova Prova</a>
+      <a routerLink="/gerador-ia">Gerador IA</a>
       <a routerLink="/estatisticas">Estatísticas</a>
       <a routerLink="/leaderboard">Ranking</a>
       <a routerLink="/ia-chat">IA</a>

@@ -32,4 +32,10 @@ export class Questao {
 
   @Column({ default: false })
   classificado: boolean;
+
+  @Column({ default: false })
+  gerada_por_ia: boolean;
+
+  @Column({ nullable: true })
+  usuario_id_gerador: string;
 }

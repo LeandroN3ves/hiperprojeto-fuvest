@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Estatistica } from '../database/entities/estatistica.entity';
+import { Questao } from '../database/entities/questao.entity';
+import { Prova } from '../database/entities/prova.entity';
 import { FallbackRegrasService } from './fallback/regras.service';
 
 interface MensagemChat {
@@ -20,6 +22,8 @@ export class IaService {
   constructor(
     private configService: ConfigService,
     @InjectRepository(Estatistica) private estatisticaRepo: Repository<Estatistica>,
+    @InjectRepository(Questao) private questaoRepo: Repository<Questao>,
+    @InjectRepository(Prova) private provaRepo: Repository<Prova>,
     private fallbackService: FallbackRegrasService,
   ) {}
 
@@ -132,6 +136,207 @@ export class IaService {
       this.logger.error('Erro ao gerar JSON estruturado via IA', e);
       throw e;
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // GERAÇÃO DE PROVA POR IA
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async gerarProvaIA(temas: string[], qtdQuestoes: number, usuarioId: string) {
+    this.logger.log(`Gerando prova IA: ${qtdQuestoes} questões sobre [${temas.join(', ')}]`);
+
+    const prompt = `Você é um professor especialista em vestibulares brasileiros, especialmente a Fuvest (USP).
+
+Gere exatamente ${qtdQuestoes} questões de múltipla escolha (alternativas A até E) sobre os seguintes temas: ${temas.join(', ')}.
+
+Regras obrigatórias:
+- Cada questão deve ter nível de vestibular (Fuvest/ENEM)
+- Enunciados claros e objetivos, sem depender de imagens
+- Exatamente 5 alternativas (A, B, C, D, E) por questão
+- Apenas 1 alternativa correta por questão
+- Distribua as questões entre os temas fornecidos
+- NÃO inclua numeração no enunciado
+
+Responda EXCLUSIVAMENTE com um JSON válido no seguinte formato (sem texto adicional, sem markdown):
+[
+  {
+    "enunciado": "texto da pergunta",
+    "alternativas": [
+      {"letra": "A", "texto": "texto da alternativa A"},
+      {"letra": "B", "texto": "texto da alternativa B"},
+      {"letra": "C", "texto": "texto da alternativa C"},
+      {"letra": "D", "texto": "texto da alternativa D"},
+      {"letra": "E", "texto": "texto da alternativa E"}
+    ],
+    "resposta_correta": "A",
+    "tema": "nome do tema"
+  }
+]`;
+
+    let questoesGeradas: any[];
+
+    try {
+      // Tentar OpenRouter primeiro (com mais tokens para provas)
+      const respostaRaw = await this.chamarOpenRouterParaProva(prompt);
+      questoesGeradas = this.parseQuestoesJSON(respostaRaw);
+    } catch (e) {
+      this.logger.warn(`OpenRouter falhou para geração de prova: ${e?.message}. Tentando Gemini...`);
+      try {
+        const respostaRaw = await this.chamarGemini(
+          'Responda estritamente em JSON válido, sem markdown.',
+          prompt, []
+        );
+        questoesGeradas = this.parseQuestoesJSON(respostaRaw);
+      } catch (e2) {
+        this.logger.error(`Nenhum provedor de IA disponível para gerar prova: ${e2?.message}`);
+        throw new BadRequestException(
+          'Não foi possível gerar a prova no momento. Tente novamente em alguns instantes.'
+        );
+      }
+    }
+
+    // Validar quantidade mínima
+    if (!questoesGeradas || questoesGeradas.length === 0) {
+      throw new BadRequestException('A IA não conseguiu gerar questões válidas. Tente novamente.');
+    }
+
+    this.logger.log(`IA gerou ${questoesGeradas.length} questões. Salvando no banco...`);
+
+    // Salvar questões no banco
+    const questoesSalvas: Questao[] = [];
+    for (const q of questoesGeradas) {
+      const novaQuestao = new Questao();
+      novaQuestao.enunciado = q.enunciado;
+      novaQuestao.alternativas = q.alternativas;
+      novaQuestao.resposta_correta = q.resposta_correta?.toUpperCase();
+      novaQuestao.tema = q.tema || temas[0];
+      novaQuestao.categoria = null as any;
+      novaQuestao.ano_fuvest = null as any;
+      novaQuestao.imagem_url = null as any;
+      novaQuestao.explicacao = null as any;
+      novaQuestao.classificado = false;
+      novaQuestao.gerada_por_ia = true;
+      novaQuestao.usuario_id_gerador = usuarioId;
+      const salva = await this.questaoRepo.save(novaQuestao);
+      questoesSalvas.push(salva);
+    }
+
+    // Criar prova
+    const prova = this.provaRepo.create({
+      usuario_id: usuarioId,
+      tipo: 'ia_gerada',
+      configuracao: {
+        qtd_questoes: questoesSalvas.length,
+        temas,
+        distribuicao: { facil: 33, medio: 34, dificil: 33 },
+        questoes_ids: questoesSalvas.map(q => q.id),
+      },
+    });
+    const provaSalva = await this.provaRepo.save(prova);
+
+    this.logger.log(`Prova IA criada: ${provaSalva.id} com ${questoesSalvas.length} questões`);
+
+    return {
+      prova_id: provaSalva.id,
+      primeira_questao: {
+        id: questoesSalvas[0].id,
+        enunciado: questoesSalvas[0].enunciado,
+        alternativas: questoesSalvas[0].alternativas,
+        numero: 1,
+        total: questoesSalvas.length,
+      },
+    };
+  }
+
+  /**
+   * Chamada OpenRouter com mais tokens para geração de provas
+   */
+  private async chamarOpenRouterParaProva(prompt: string): Promise<string> {
+    const apiKey = this.configService.get<string>('openrouter.apiKey');
+    if (!apiKey) throw new Error('OpenRouter API key não configurada');
+
+    const modelos = [
+      'nvidia/llama-3.3-nemotron-super-49b-v1:free',
+      'google/gemma-3-27b-it:free',
+      'openrouter/auto',
+    ];
+
+    for (const modelo of modelos) {
+      try {
+        this.logger.log(`OpenRouter (prova) tentando modelo: ${modelo}...`);
+        const response = await axios.post(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            model: modelo,
+            messages: [
+              { role: 'system', content: 'Você é um gerador de questões de vestibular. Responda APENAS com JSON válido, sem texto adicional.' },
+              { role: 'user', content: prompt },
+            ],
+            max_tokens: 4000,
+            temperature: 0.8,
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://hiperprojeto-fuvest.vercel.app',
+              'X-Title': 'HiperprojetoFuvest',
+            },
+            timeout: 90000, // 90s — geração de prova demora mais
+          },
+        );
+
+        const content = response.data?.choices?.[0]?.message?.content;
+        if (content) {
+          this.logger.log(`OpenRouter (prova) respondeu via modelo: ${modelo}`);
+          return content;
+        }
+        this.logger.warn(`OpenRouter modelo ${modelo} retornou vazio, tentando próximo...`);
+      } catch (e) {
+        const errorMsg = e?.response?.data?.error?.message || e?.message || 'erro desconhecido';
+        this.logger.warn(`OpenRouter (prova) modelo ${modelo} falhou: ${errorMsg}`);
+        if (modelo === modelos[modelos.length - 1]) {
+          throw new Error(`Todos os modelos OpenRouter falharam. Último erro: ${errorMsg}`);
+        }
+      }
+    }
+    throw new Error('Todos os modelos OpenRouter falharam');
+  }
+
+  /**
+   * Parse e validação do JSON de questões retornado pela IA
+   */
+  private parseQuestoesJSON(raw: string): any[] {
+    // Limpar possíveis marcas de markdown
+    let limpo = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    
+    // Tentar encontrar array JSON na resposta
+    const inicioArray = limpo.indexOf('[');
+    const fimArray = limpo.lastIndexOf(']');
+    if (inicioArray !== -1 && fimArray !== -1) {
+      limpo = limpo.substring(inicioArray, fimArray + 1);
+    }
+
+    let questoes: any[];
+    try {
+      questoes = JSON.parse(limpo);
+    } catch (e) {
+      this.logger.error(`Erro ao parsear JSON da IA: ${e.message}. Raw: ${raw.substring(0, 500)}`);
+      throw new Error('A IA retornou um formato inválido');
+    }
+
+    if (!Array.isArray(questoes)) {
+      throw new Error('A resposta da IA não é um array de questões');
+    }
+
+    // Validar cada questão
+    return questoes.filter(q => {
+      if (!q.enunciado || !q.alternativas || !q.resposta_correta) return false;
+      if (!Array.isArray(q.alternativas) || q.alternativas.length < 4) return false;
+      const letrasValidas = ['A', 'B', 'C', 'D', 'E'];
+      if (!letrasValidas.includes(q.resposta_correta?.toUpperCase())) return false;
+      return true;
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
