@@ -143,35 +143,25 @@ export class IaService {
   // ─────────────────────────────────────────────────────────────────────────
 
   async gerarProvaIA(temas: string[], qtdQuestoes: number, usuarioId: string) {
-    this.logger.log(`Gerando prova IA: ${qtdQuestoes} questões sobre [${temas.join(', ')}]`);
+    // Limitar temas para caber no prompt (evitar prompts gigantes)
+    const temasLimpos = temas.map(t => t.substring(0, 80).trim()).slice(0, 5);
+    const temasTexto = temasLimpos.join(', ').substring(0, 500);
 
-    const prompt = `Você é um professor especialista em vestibulares brasileiros, especialmente a Fuvest (USP).
+    this.logger.log(`Gerando prova IA: ${qtdQuestoes} questões sobre [${temasTexto}]`);
 
-Gere exatamente ${qtdQuestoes} questões de múltipla escolha (alternativas A até E) sobre os seguintes temas: ${temas.join(', ')}.
+    const prompt = `Você é um professor especialista em vestibulares brasileiros (Fuvest/USP).
 
-Regras obrigatórias:
-- Cada questão deve ter nível de vestibular (Fuvest/ENEM)
-- Enunciados claros e objetivos, sem depender de imagens
-- Exatamente 5 alternativas (A, B, C, D, E) por questão
-- Apenas 1 alternativa correta por questão
-- Distribua as questões entre os temas fornecidos
-- NÃO inclua numeração no enunciado
+Gere exatamente ${qtdQuestoes} questões de múltipla escolha sobre: ${temasTexto}.
 
-Responda EXCLUSIVAMENTE com um JSON válido no seguinte formato (sem texto adicional, sem markdown):
-[
-  {
-    "enunciado": "texto da pergunta",
-    "alternativas": [
-      {"letra": "A", "texto": "texto da alternativa A"},
-      {"letra": "B", "texto": "texto da alternativa B"},
-      {"letra": "C", "texto": "texto da alternativa C"},
-      {"letra": "D", "texto": "texto da alternativa D"},
-      {"letra": "E", "texto": "texto da alternativa E"}
-    ],
-    "resposta_correta": "A",
-    "tema": "nome do tema"
-  }
-]`;
+Regras:
+- Nível vestibular, enunciados curtos e claros
+- 5 alternativas (A-E), apenas 1 correta
+- NÃO numere as questões
+- Enunciados curtos (máximo 2 frases)
+- Alternativas curtas (máximo 1 frase cada)
+
+Responda APENAS com JSON válido, sem markdown:
+[{"enunciado":"pergunta","alternativas":[{"letra":"A","texto":"..."},...],"resposta_correta":"A","tema":"tema"}]`;
 
     let questoesGeradas: any[];
 
@@ -304,7 +294,8 @@ Responda EXCLUSIVAMENTE com um JSON válido no seguinte formato (sem texto adici
   }
 
   /**
-   * Parse e validação do JSON de questões retornado pela IA
+   * Parse e validação do JSON de questões retornado pela IA.
+   * Robusto contra JSON truncado (extrai questões completas mesmo se a resposta foi cortada).
    */
   private parseQuestoesJSON(raw: string): any[] {
     // Limpar possíveis marcas de markdown
@@ -312,17 +303,45 @@ Responda EXCLUSIVAMENTE com um JSON válido no seguinte formato (sem texto adici
     
     // Tentar encontrar array JSON na resposta
     const inicioArray = limpo.indexOf('[');
-    const fimArray = limpo.lastIndexOf(']');
-    if (inicioArray !== -1 && fimArray !== -1) {
-      limpo = limpo.substring(inicioArray, fimArray + 1);
+    if (inicioArray !== -1) {
+      limpo = limpo.substring(inicioArray);
     }
 
-    let questoes: any[];
+    // Tentar parse direto primeiro
+    let questoes: any[] | null = null;
     try {
       questoes = JSON.parse(limpo);
     } catch (e) {
-      this.logger.error(`Erro ao parsear JSON da IA: ${e.message}. Raw: ${raw.substring(0, 500)}`);
-      throw new Error('A IA retornou um formato inválido');
+      this.logger.warn(`JSON completo falhou, tentando recuperar questões parciais...`);
+      
+      // Estratégia: encontrar objetos JSON completos individualmente
+      // Procurar cada {...} que contenha "enunciado" e "resposta_correta"
+      questoes = [];
+      let profundidade = 0;
+      let inicioObj = -1;
+      
+      for (let i = 0; i < limpo.length; i++) {
+        if (limpo[i] === '{') {
+          if (profundidade === 0) inicioObj = i;
+          profundidade++;
+        } else if (limpo[i] === '}') {
+          profundidade--;
+          if (profundidade === 0 && inicioObj !== -1) {
+            const objStr = limpo.substring(inicioObj, i + 1);
+            try {
+              const obj = JSON.parse(objStr);
+              if (obj.enunciado && obj.alternativas && obj.resposta_correta) {
+                questoes.push(obj);
+              }
+            } catch {
+              // Objeto incompleto, ignorar
+            }
+            inicioObj = -1;
+          }
+        }
+      }
+      
+      this.logger.log(`Recuperadas ${questoes.length} questões de JSON truncado`);
     }
 
     if (!Array.isArray(questoes)) {
@@ -330,13 +349,16 @@ Responda EXCLUSIVAMENTE com um JSON válido no seguinte formato (sem texto adici
     }
 
     // Validar cada questão
-    return questoes.filter(q => {
+    const validas = questoes.filter(q => {
       if (!q.enunciado || !q.alternativas || !q.resposta_correta) return false;
       if (!Array.isArray(q.alternativas) || q.alternativas.length < 4) return false;
       const letrasValidas = ['A', 'B', 'C', 'D', 'E'];
       if (!letrasValidas.includes(q.resposta_correta?.toUpperCase())) return false;
       return true;
     });
+
+    this.logger.log(`${validas.length} questões válidas após filtragem`);
+    return validas;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
