@@ -149,16 +149,22 @@ export class IaService {
 
     this.logger.log(`Gerando prova IA: ${qtdQuestoes} questões sobre [${temasTexto}]`);
 
-    const prompt = `Você é um professor especialista em vestibulares brasileiros (Fuvest/USP).
+    const prompt = `Você é um elaborador de provas da FUVEST (vestibular da USP), reconhecido por criar questões desafiadoras que exigem raciocínio crítico.
 
-Gere exatamente ${qtdQuestoes} questões de múltipla escolha sobre: ${temasTexto}.
+Gere exatamente ${qtdQuestoes} questões de múltipla escolha DIFÍCEIS sobre: ${temasTexto}.
 
-Regras:
-- Nível vestibular, enunciados curtos e claros
+NÍVEL DE DIFICULDADE — FUVEST 1ª FASE:
+- Questões que exigem ANÁLISE, INTERPRETAÇÃO e APLICAÇÃO de conceitos (nunca apenas memorização)
+- Alternativas com distratores plausíveis que testem compreensão profunda
+- Inclua questões que cruzem subtemas ou exijam raciocínio em múltiplas etapas
+- Evite perguntas triviais como "o que é X?" ou definições diretas
+- Pelo menos metade das questões deve exigir resolução de problemas ou análise de situações
+
+FORMATO OBRIGATÓRIO:
 - 5 alternativas (A-E), apenas 1 correta
 - NÃO numere as questões
-- Enunciados curtos (máximo 2 frases)
-- Alternativas curtas (máximo 1 frase cada)
+- Enunciados podem ter até 3 frases para contextualizar o problema
+- Alternativas objetivas (1 frase cada)
 
 Responda APENAS com JSON válido, sem markdown:
 [{"enunciado":"pergunta","alternativas":[{"letra":"A","texto":"..."},...],"resposta_correta":"A","tema":"tema"}]`;
