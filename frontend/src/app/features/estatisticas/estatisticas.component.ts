@@ -10,8 +10,18 @@ import { EstatisticasService } from '../../core/services/estatisticas.service';
   template: `
     <div class="estatisticas-container">
       <div class="glass-header">
-        <h2>📊 Seu Desempenho</h2>
-        <p>Acompanhe sua evolução e identifique pontos de melhoria</p>
+        <div class="header-top">
+          <div>
+            <h2>📊 Seu Desempenho</h2>
+            <p>Acompanhe sua evolução e identifique pontos de melhoria</p>
+          </div>
+          <button *ngIf="dashboard()?.total_questoes_respondidas > 0"
+                  class="btn-limpar-todas"
+                  (click)="limparTodas()"
+                  [disabled]="limpando()">
+            🗑️ Limpar Tudo
+          </button>
+        </div>
       </div>
 
       <!-- Cards de resumo -->
@@ -64,7 +74,15 @@ import { EstatisticasService } from '../../core/services/estatisticas.service';
             <div *ngFor="let t of temasSorted()" class="tema-row">
               <div class="tema-meta">
                 <span class="tema-nome">{{ t.tema }}</span>
-                <span class="contagem">{{ t.acertos + t.erros }} questões</span>
+                <div class="tema-actions">
+                  <span class="contagem">{{ t.acertos + t.erros }} questões</span>
+                  <button class="btn-limpar-tema"
+                          (click)="limparTema(t.tema)"
+                          title="Remover estatísticas deste tema"
+                          [disabled]="limpando()">
+                    ✕
+                  </button>
+                </div>
               </div>
               <div class="progress-container">
                 <div class="barra-wrapper">
@@ -92,6 +110,7 @@ import { EstatisticasService } from '../../core/services/estatisticas.service';
 export class EstatisticasComponent implements OnInit {
   dashboard = signal<any>(null);
   carregando = signal(true);
+  limpando = signal(false);
 
   temasSorted = computed(() => {
     const d = this.dashboard();
@@ -103,10 +122,15 @@ export class EstatisticasComponent implements OnInit {
   constructor(private estatisticasService: EstatisticasService) {}
 
   ngOnInit() {
+    this.carregarDados();
+  }
+
+  carregarDados() {
+    this.carregando.set(true);
     this.estatisticasService.getDashboard().subscribe({
-      next: (d) => { 
-        this.dashboard.set(d); 
-        this.carregando.set(false); 
+      next: (d) => {
+        this.dashboard.set(d);
+        this.carregando.set(false);
       },
       error: () => this.carregando.set(false),
     });
@@ -114,5 +138,29 @@ export class EstatisticasComponent implements OnInit {
 
   gerarProvaFocada() {
     window.location.href = `/provas/configurar?tema=${encodeURIComponent(this.dashboard()?.tema_mais_fraco)}`;
+  }
+
+  limparTodas() {
+    if (!confirm('⚠️ Tem certeza que deseja apagar TODAS as estatísticas, respostas e provas? Esta ação não pode ser desfeita.')) return;
+    this.limpando.set(true);
+    this.estatisticasService.limparTodas().subscribe({
+      next: () => {
+        this.limpando.set(false);
+        this.carregarDados();
+      },
+      error: () => this.limpando.set(false),
+    });
+  }
+
+  limparTema(tema: string) {
+    if (!confirm(`Remover estatísticas do tema "${tema}"?`)) return;
+    this.limpando.set(true);
+    this.estatisticasService.limparTema(tema).subscribe({
+      next: () => {
+        this.limpando.set(false);
+        this.carregarDados();
+      },
+      error: () => this.limpando.set(false),
+    });
   }
 }

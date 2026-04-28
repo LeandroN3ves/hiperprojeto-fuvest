@@ -138,4 +138,37 @@ export class EstatisticasService {
         : `A questão ${questaoId} não foi respondida hoje`,
     };
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LIMPAR ESTATÍSTICAS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async limparTodas(usuarioId: string) {
+    const [statsRemovidas, respostasRemovidas, provasRemovidas] = await Promise.all([
+      this.estatisticaRepo.delete({ usuario_id: usuarioId }),
+      this.respostaRepo.delete({ usuario_id: usuarioId }),
+      this.provaRepo.delete({ usuario_id: usuarioId }),
+    ]);
+
+    return {
+      mensagem: 'Todas as estatísticas foram removidas',
+      removidos: {
+        estatisticas: statsRemovidas.affected || 0,
+        respostas: respostasRemovidas.affected || 0,
+        provas: provasRemovidas.affected || 0,
+      },
+    };
+  }
+
+  async limparTema(usuarioId: string, tema: string) {
+    const removida = await this.estatisticaRepo.delete({
+      usuario_id: usuarioId,
+      tema,
+    });
+
+    return {
+      mensagem: `Estatísticas do tema "${tema}" removidas`,
+      removidos: removida.affected || 0,
+    };
+  }
 }

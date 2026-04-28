@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Delete, Param, ParseIntPipe, UseGuards, Query } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../common/decorators/get-user.decorator';
 import { Usuario } from '../database/entities/usuario.entity';
@@ -40,5 +40,17 @@ export class EstatisticasController {
     @GetUser() usuario: Usuario,
   ) {
     return this.estatisticasService.getQuestaoStatsDiaria(usuario.id, questaoId);
+  }
+
+  // Limpar TODAS as estatísticas do usuário
+  @Delete()
+  limparTodas(@GetUser() usuario: Usuario) {
+    return this.estatisticasService.limparTodas(usuario.id);
+  }
+
+  // Limpar estatísticas de um tema específico
+  @Delete('tema/:tema')
+  limparTema(@Param('tema') tema: string, @GetUser() usuario: Usuario) {
+    return this.estatisticasService.limparTema(usuario.id, decodeURIComponent(tema));
   }
 }

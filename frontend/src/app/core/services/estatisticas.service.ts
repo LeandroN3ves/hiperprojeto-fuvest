@@ -13,4 +13,12 @@ export class EstatisticasService {
   getFraquezas() {
     return this.http.get<any>(`${environment.apiUrl}/api/estatisticas/fraquezas`);
   }
+
+  limparTodas() {
+    return this.http.delete<any>(`${environment.apiUrl}/api/estatisticas`);
+  }
+
+  limparTema(tema: string) {
+    return this.http.delete<any>(`${environment.apiUrl}/api/estatisticas/tema/${encodeURIComponent(tema)}`);
+  }
 }
